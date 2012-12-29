@@ -9,65 +9,78 @@ module AI.BayesClassifier where
     -- use ln's and sum them instead
 
     type ClassificationName = String
-    data Classification = Classification { nGrams :: NGram.NGrams, numDocuments :: Int, numNGrams :: Int} deriving (Show)
-    data Corpus = Corpus {classifications :: Map.Map String Classification,  totalDocuments :: Int, liklihood :: (Int -> Int -> Int -> Float), numAtoms :: Int}
     type Document = String
+    data Classification = Classification {
+        nGrams :: NGram.NGrams,
+        numDocuments :: Int,
+        numNGrams :: Int} deriving (Show)
+    data Corpus = Corpus {
+        classifications :: Map.Map String Classification,
+        totalDocuments :: Int,
+        liklihood :: (Int -> Int -> Int -> Float),
+        numAtoms :: Int,
+        stopWords :: [String]}
 
     newClassification :: Classification
     newClassification = Classification NGram.empty 0 0
 
-    newCorpus :: Int -> Corpus
+    newCorpus :: Int -> [String]-> Corpus
     newCorpus = Corpus Map.empty 0 laplacianLiklihood
-
-    addDocument :: Int -> Document -> Classification -> Classification
-    addDocument i t (Classification{ nGrams = ngrams, numDocuments = numdocs, numNGrams = numngrams})
-        = Classification (NGram.union ngrams newngrams) (numdocs + 1) (numngrams + NGram.countNGrams newngrams)
-            where
-                newngrams :: NGram.NGrams
-                newngrams = NGram.fromString i t
 
     findClassification :: ClassificationName -> Corpus -> Classification
     findClassification name corp = Map.findWithDefault newClassification name $ classifications corp
 
     train :: Document -> ClassificationName -> Corpus -> Corpus
-    train d name corp@(Corpus classes total liklihood num)
-        = Corpus (Map.insert name (addDocument num d $ findClassification name corp) classes) (total + 1) liklihood num
+    train
+        d name corp@(Corpus {
+            classifications = classes,
+            totalDocuments = total,
+            liklihood = liklihood,
+            numAtoms = num}) =
+                Corpus {classifications = Map.insert name (addDocument) classes,
+                    totalDocuments = total + 1,
+                    liklihood = liklihood,
+                    numAtoms = num}
+                where
+                    cls         = findClassification name corp
+                    newngrams   = NGram.fromString num [] d
+                    newTotal    = numNGrams cls + NGram.countNGrams newngrams
+                    addDocument = Classification (NGram.union (nGrams cls) (newngrams)) ((numDocuments cls) + 1) newTotal
 
     classificationNames :: Corpus -> [ClassificationName]
     classificationNames corp = Map.keys $ classifications corp
 
     probOfNGram :: NGram.NGram -> ClassificationName -> Corpus -> Float
-    probOfNGram n name corp@(Corpus{liklihood = liklihood})
-        = liklihood num total (length $ classificationNames corp)
-            where
-                cls = findClassification name corp
-                num = Map.findWithDefault 0 n $ nGrams cls
-                total = numNGrams cls
+    probOfNGram n name corp@(Corpus{liklihood = liklihood}) = liklihood num total $ Map.size (nGrams cls)
+      where
+        cls     = findClassification name corp
+        num     = Map.findWithDefault 0 n $ nGrams cls
+        total   = numNGrams cls
+
+    getClassificationScores :: Document -> Corpus -> [(ClassificationName, Float)]
+    getClassificationScores doc corp = map mapper $ classificationNames corp
+        where mapper k = (k, probOfDocumentGivenClassification doc corp k)
 
     probOfDocumentGivenClassification :: Document -> Corpus -> ClassificationName -> Float
     probOfDocumentGivenClassification
         doc
-        corp@(Corpus {liklihood = liklihood, totalDocuments = total, numAtoms = num})
-        name
-            = probOfClassification + Map.fold (+) 0 nGramProbabilities
-                where
-                    ngrams = NGram.fromString num doc
-                    nGramProbabilities = Map.mapWithKey (\k v -> (fromIntegral v) * log (probOfNGram k name corp)) ngrams
-                    probOfClassification = liklihood (numDocuments $ findClassification name corp) total (length $ classificationNames corp)
-
-    getClassificationScores :: Document -> Corpus -> [(ClassificationName, Float)]
-    getClassificationScores doc corp = map mapper $ classificationNames corp
-        where
-            mapper k = (k, probOfDocumentGivenClassification doc corp k)
+        corp@(Corpus
+            {liklihood = liklihood,
+            totalDocuments = total,
+            numAtoms = num,
+            stopWords = stopWords})
+        name = probOfClassification + Map.fold (+) 0 nGramProbabilities
+          where
+            ngrams                  = NGram.fromString num stopWords doc
+            nGramProbabilities      = Map.mapWithKey (\k v -> (fromIntegral v) * log (probOfNGram k name corp)) ngrams
+            probOfClassification    = liklihood (numDocuments $ findClassification name corp) total (length $ classificationNames corp)
 
     getBestClassification :: Document -> Corpus -> (ClassificationName, Float)
-    getBestClassification doc corp = doit ("No Match Found", -999999999.9) $ getClassificationScores doc corp
-        where
-            doit :: (ClassificationName, Float) -> [(ClassificationName, Float)] -> (ClassificationName, Float)
-            doit m [] = m
-            doit m (x:xs)
-                | (snd x) > (snd m)     = doit x xs
-                | otherwise             = doit m xs
+    getBestClassification doc corp = foldl bestResult ("No Match Found", -999999999.9) $ getClassificationScores doc corp
+      where
+        bestResult a b = if (snd a) > (snd b)
+            then a
+            else b
 
     -- different types of liklihood
     maxLiklihood :: Int -> Int -> Int -> Float

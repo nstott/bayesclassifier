@@ -1,7 +1,5 @@
 module Data.NGram where
 
-    -- TODO should lowercase and apply a stemmer to the ngrams
-
     import Data.List (intersperse, (\\))
     import Data.Maybe (fromMaybe)
     import qualified Data.Map as Map
@@ -15,13 +13,13 @@ module Data.NGram where
     empty = Map.empty
 
     explode :: String -> [String]
-    explode x =  words $ foldl1 (++) $ lines x
+    explode =  words . concat . intersperse " ". lines
 
     implode :: [String] -> String
-    implode x = foldl1 (++) $ intersperse " " x
+    implode = concat . intersperse " "
 
-    fromString :: Int -> String -> NGrams
-    fromString p s = toNGram p [] $ explode s
+    fromString :: Int -> [String] -> String -> NGrams
+    fromString p stopWords s = toNGram p stopWords $ explode s
 
     toNGram :: Int -> [String] -> [String] -> NGrams
     toNGram part l stopWords = doit (l \\ stopWords) Map.empty
@@ -49,4 +47,4 @@ module Data.NGram where
     union = Map.unionWith (+)
 
     countNGrams :: NGrams -> Int
-    countNGrams n = Map.foldl (+) 0 n
+    countNGrams = Map.foldl (+) 0
