@@ -22,11 +22,12 @@ module Data.NGram where
     fromString p stopWords s = toNGram p stopWords $ explode s
 
     toNGram :: Int -> [String] -> [String] -> NGrams
-    toNGram part l stopWords = doit (l \\ stopWords) Map.empty
+    toNGram part stopWords l = doit (l \\ stopWords) Map.empty
         where
             doit :: [String] -> NGrams -> NGrams
             doit [] acc = acc
-            doit lst@(_:xs) acc = doit xs $ Map.insertWith (+) (cleanWords $ take part lst) 1 acc
+            doit lst@(_:xs) acc = doit xs $ Map.insertWith (+) (cleanList lst) 1 acc
+            cleanList = cleanWords . take part
 
     cleanWords :: [String] -> String
     cleanWords lst = implode $ stemWords Porter $ map (map Char.toLower) lst
